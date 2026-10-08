@@ -28,8 +28,7 @@ npm run dev
 - Después de acertar, el botón permite pasar a la siguiente oración.
 - Al finalizar la lectura hay 3 preguntas con opciones A, B y C. Su orden es fijo, incluso tras un error.
 - Al terminar las preguntas, vuelve automáticamente al catálogo.
-- Los cuentos completados se marcan durante la sesión abierta. No se envían datos del niño a ningún servidor.
-- El cuaderno PDF de 40 páginas se descarga únicamente al pulsar el enlace correspondiente.
+- Los cuentos completados se guardan en el navegador y siguen marcados después de recargar o volver a abrir la página. No se envían datos del niño a ningún servidor.
 
 ## Resumen y premio de televisión
 
@@ -39,7 +38,16 @@ El botón **Resumen** muestra los puntos ganados por tiempo de lectura, respuest
 
 El reloj cuenta mientras hay una oración o pregunta abierta y la página está visible. Se pausa en el catálogo, al abrir el resumen y al cambiar de pestaña u ocultar la página. Los aciertos y errores incluyen tanto la elección de dibujos como las preguntas finales. Un acierto se cuenta una vez antes de avanzar; cada intento incorrecto resta un punto.
 
-El resumen se guarda en `sessionStorage`: se conserva al recargar la misma pestaña y normalmente se elimina al cerrarla. Los datos permanecen en el navegador y no se envían a un servidor.
+El resumen tiene dos vistas:
+
+- **Esta sesión**: el premio y sus contadores empiezan en cero en cada recarga o nueva apertura. No se restauran de sesiones anteriores.
+- **Historial**: guarda cuentos completados, aciertos, errores, porcentaje de aciertos y tiempo total acumulado. También muestra las estadísticas de cada cuento completado. Repetir un cuento suma sus nuevos intentos y tiempo, sin duplicarlo en el contador de cuentos distintos.
+
+El porcentaje de aciertos es `correctas / (correctas + incorrectas) × 100`, con un decimal; sin respuestas muestra 0 %. El tiempo incluye las lecturas en curso, incluso si el cuento todavía no se ha terminado.
+
+El historial se almacena en `localStorage` con la clave `bluey-reading-history-v1`. Funciona tanto en localhost como en GitHub Pages. Cada dirección, navegador y dispositivo conserva su propio historial; borrar los datos del sitio elimina ese historial. No requiere SQLite ni un servidor de datos. El premio vive solo en memoria y siempre vuelve a cero al recargar. Los datos no se envían a un servidor.
+
+Si existe un resumen de la versión anterior en `sessionStorage`, sus totales se incorporan una sola vez al historial, sin restaurar el premio. Esa versión no guardaba qué cuentos se habían completado, por lo que no es posible recuperar esos títulos.
 
 ## Contenido e imágenes
 
@@ -47,7 +55,7 @@ El resumen se guarda en `sessionStorage`: se conserva al recargar la misma pesta
 
 `public/images` guarda las 40 láminas WebP, cada una con 7 escenas, y 40 copias pequeñas para el catálogo. Las vistas usan recortes SVG para mostrar la escena correspondiente. La lámina de un cuento se reutiliza en todos sus pasos. El catálogo carga las imágenes conforme se acercan a la pantalla.
 
-`public/documents/40-cuentos-recortables.pdf` es el cuaderno imprimible. Las imágenes y el PDF se sirven desde el mismo sitio; no dependen de servicios externos de imágenes.
+Las imágenes se sirven desde el mismo sitio; no dependen de servicios externos de imágenes.
 
 ## Comprobar y publicar
 

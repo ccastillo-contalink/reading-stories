@@ -1,6 +1,7 @@
 import React, { useEffect, useId, useRef, useState } from 'react';
 import { choicesForStep, reorderAfterMistake, readingReward } from './logic.mjs';
 import { useReadingSession } from './useReadingSession.js';
+import { accuracyPercent, formatReadingTime } from './progress.mjs';
 
 const base = import.meta.env.BASE_URL;
 const letters = ['A', 'B', 'C'];
@@ -50,7 +51,7 @@ function Catalog({ stories, completed, lastFinished, onSelect }) {
         <p>Leer y jugar</p>
       </button>)}
     </div>
-    <div className="print-note"><BookIcon/><p><strong>También puedes leer en papel.</strong><br/>Descarga los 40 cuentos con dibujos para recortar.</p><a href={`${base}documents/40-cuentos-recortables.pdf`} download="Bluey_40_cuentos_recortables.pdf">Descargar PDF <span aria-hidden="true">↓</span></a></div>
+
   </main>;
 }
 
@@ -114,28 +115,61 @@ function Finished({ title, onReturn }) {
   return <main className="finished page-width" id="main"><div className="finished-check" aria-hidden="true">✓</div><p className="eyebrow">¡CUENTO COMPLETADO!</p><h1>¡Lo hiciste muy bien!</h1><p>Terminaste «{title}» y sus tres preguntas.</p><button className="primary-button" onClick={onReturn}>Elegir otro cuento <Arrow/></button><small>Volvemos a los cuentos en un momento…</small></main>;
 }
 
-function SessionSummary({ stats, onClose }) {
+function ReadingHistory({ history, stories }) {
+  const completed = stories.filter(story => history.stories[story.id]?.completions > 0);
+  const percent = stats => `${accuracyPercent(stats).toLocaleString('es', { maximumFractionDigits: 1 })}%`;
+  return <section id="history-summary" aria-label="Historial de lectura">
+    <p className="summary-intro">Tu progreso acumulado, guardado en este navegador.</p>
+    <dl className="history-metrics">
+      <div><dt>Cuentos completados</dt><dd data-history="completed">{completed.length}<small> de {stories.length}</small></dd></div>
+      <div><dt>Porcentaje de aciertos</dt><dd data-history="accuracy">{percent(history.totals)}</dd></div>
+      <div><dt>Respuestas correctas</dt><dd className="positive" data-history="correct">{history.totals.correct}</dd></div>
+      <div><dt>Respuestas incorrectas</dt><dd className="negative" data-history="incorrect">{history.totals.incorrect}</dd></div>
+      <div className="history-total-time"><dt>Tiempo total de lectura</dt><dd data-history="time">{formatReadingTime(history.totals.activeMs)}</dd></div>
+    </dl>
+    <p className="summary-note">Aciertos ÷ total de respuestas × 100. Se incluyen los intentos de todos los cuentos, aunque todavía no estén completos.</p>
+    <h3 className="history-list-title">Tus cuentos completados</h3>
+    {completed.length === 0 ? <p className="history-empty">Cuando termines un cuento y sus tres preguntas, aparecerá aquí.</p> : <ul className="history-list">
+      {completed.map(story => {
+        const entry = history.stories[story.id];
+        return <li key={story.id} data-history-story={story.id}>
+          <div className="history-story-heading"><strong>{story.title}</strong><span>✓ {entry.completions === 1 ? 'Completado' : `${entry.completions} lecturas`}</span></div>
+          <p>{entry.correct} aciertos · {entry.incorrect} errores</p>
+          <div className="history-story-details"><span>{percent(entry)} de aciertos</span><span>{formatReadingTime(entry.activeMs)}</span></div>
+        </li>;
+      })}
+    </ul>}
+  </section>;
+}
+
+function SessionSummary({ stats, history, stories, persistenceAvailable, onClose }) {
   const dialog = useRef(null);
+  const [view, setView] = useState('session');
   const { readingMinutes, televisionMinutes } = readingReward(stats);
-  const totalSeconds = Math.floor(stats.activeMs / 1000);
-  const seconds = String(totalSeconds % 60).padStart(2, '0');
   useEffect(() => {
     const element = dialog.current;
     element.showModal();
     return () => element.close();
   }, []);
   return <dialog className="summary-dialog" ref={dialog} aria-labelledby="summary-title" onCancel={event => { event.preventDefault(); onClose(); }}>
-    <div className="summary-top"><p className="eyebrow">TU SESIÓN DE LECTURA</p><button className="summary-close" onClick={onClose} aria-label="Cerrar resumen">×</button></div>
+    <div className="summary-top"><p className="eyebrow">TU PROGRESO DE LECTURA</p><button className="summary-close" onClick={onClose} aria-label="Cerrar resumen">×</button></div>
     <h2 id="summary-title">Tu resumen</h2>
-    <p className="summary-intro">Cada minuto de lectura y cada acierto suman.</p>
-    <dl className="summary-stats">
-      <div><dt>Puntos ganados por leer<small>Tiempo de lectura: {readingMinutes} min {seconds} s</small></dt><dd data-stat="time">+{readingMinutes}</dd></div>
-      <div><dt>Respuestas correctas<small>Dibujos y preguntas</small></dt><dd className="positive" data-stat="correct">+{stats.correct}</dd></div>
-      <div><dt>Respuestas incorrectas<small>Un punto menos por cada error</small></dt><dd className="negative" data-stat="incorrect">−{stats.incorrect}</dd></div>
-    </dl>
-    <div className="television-reward"><p>TU PREMIO</p><strong data-stat="reward">{televisionMinutes} <span>minutos</span></strong><p>de pantalla en la televisión</p></div>
-    <p className="summary-formula">{readingMinutes} + {stats.correct} − {stats.incorrect} = {readingMinutes + stats.correct - stats.incorrect < 0 ? `${readingMinutes + stats.correct - stats.incorrect} → 0` : televisionMinutes}</p>
-    <p className="summary-note">Se cuentan minutos completos. El tiempo se pausa aquí, en el catálogo y al ocultar la página. El premio mínimo es cero.</p>
+    <div className="summary-tabs" role="group" aria-label="Vista del resumen">
+      <button aria-pressed={view === 'session'} aria-controls="session-summary" onClick={() => setView('session')}>Esta sesión</button>
+      <button aria-pressed={view === 'history'} aria-controls="history-summary" onClick={() => setView('history')}>Historial</button>
+    </div>
+    {!persistenceAvailable && <p className="storage-notice" role="status">El navegador no permite guardar el historial. Podrás seguir leyendo, pero estos datos se perderán al cerrar o recargar.</p>}
+    {view === 'session' ? <section id="session-summary" aria-label="Premio de esta sesión">
+      <p className="summary-intro">El premio empieza en cero cada vez que recargas la página. Tu historial se conserva.</p>
+      <dl className="summary-stats">
+        <div><dt>Puntos ganados por leer<small>Tiempo de esta sesión: {formatReadingTime(stats.activeMs)}</small></dt><dd data-stat="time">+{readingMinutes}</dd></div>
+        <div><dt>Respuestas correctas<small>De esta sesión</small></dt><dd className="positive" data-stat="correct">+{stats.correct}</dd></div>
+        <div><dt>Respuestas incorrectas<small>De esta sesión</small></dt><dd className="negative" data-stat="incorrect">−{stats.incorrect}</dd></div>
+      </dl>
+      <div className="television-reward"><p>TU PREMIO</p><strong data-stat="reward">{televisionMinutes} <span>minutos</span></strong><p>de pantalla en la televisión</p></div>
+      <p className="summary-formula">{readingMinutes} + {stats.correct} − {stats.incorrect} = {readingMinutes + stats.correct - stats.incorrect < 0 ? `${readingMinutes + stats.correct - stats.incorrect} → 0` : televisionMinutes}</p>
+      <p className="summary-note">Se cuentan minutos completos. El tiempo se pausa aquí, en el catálogo y al ocultar la página. El premio mínimo es cero.</p>
+    </section> : <ReadingHistory history={history} stories={stories || []}/>}
     <button className="primary-button summary-return" onClick={onClose}>Seguir leyendo <Arrow/></button>
   </dialog>;
 }
@@ -146,10 +180,10 @@ export default function App() {
   const [story, setStory] = useState(null);
   const [step, setStep] = useState(0);
   const [phase, setPhase] = useState('catalog');
-  const [completed, setCompleted] = useState(new Set());
   const [lastFinished, setLastFinished] = useState('');
   const [summaryOpen, setSummaryOpen] = useState(false);
-  const { stats, recordAnswer } = useReadingSession((phase === 'reading' || phase === 'quiz') && !summaryOpen);
+  const { stats, history, persistenceAvailable, recordAnswer, completeStory } = useReadingSession((phase === 'reading' || phase === 'quiz') && !summaryOpen, story?.id);
+  const completed = new Set(Object.entries(history.stories).filter(([, entry]) => entry.completions > 0).map(([id]) => Number(id)));
   useEffect(() => {
     const controller = new AbortController();
     fetch(`${base}data/stories.json`, { signal: controller.signal }).then(response => {
@@ -170,7 +204,7 @@ export default function App() {
       else { setStep(0); setPhase('quiz'); }
     } else if (step < 2) setStep(step + 1);
     else {
-      setCompleted(previous => new Set([...previous, story.id]));
+      completeStory(story.id);
       setLastFinished(story.title);
       setPhase('finished');
     }
@@ -181,7 +215,7 @@ export default function App() {
     <header className="site-header"><div className="header-inner page-width">
       <button className="brand" onClick={returnToCatalog} aria-label="Cuentos con Bluey, volver al inicio"><span className="brand-icon"><BookIcon/></span><span>Cuentos con <strong>Bluey</strong></span></button>
       <div className="header-actions"><button className="summary-button" onClick={() => setSummaryOpen(true)}><span aria-hidden="true">☆</span> Resumen</button>
-      <a className="pdf-link" href={`${base}documents/40-cuentos-recortables.pdf`} download="Bluey_40_cuentos_recortables.pdf"><span aria-hidden="true">↓</span> <span>Cuaderno PDF</span></a></div>
+      </div>
     </div></header>
     {!stories && <main className="loading page-width" id="main" role="status"><h1>{error ? 'No pudimos abrir los cuentos.' : 'Preparando tus cuentos…'}</h1>{error && <button className="primary-button" onClick={() => window.location.reload()}>Volver a intentar</button>}</main>}
     {stories && phase === 'catalog' && <Catalog stories={stories} completed={completed} lastFinished={lastFinished} onSelect={openStory}/>}
@@ -194,7 +228,7 @@ export default function App() {
       {phase === 'reading' ? <ReadingStep key={`reading-${story.id}-${step}`} story={story} stepIndex={step} onNext={next} onAnswer={recordAnswer}/> : <QuestionStep key={`quiz-${story.id}-${step}`} story={story} questionIndex={step} onNext={next} onAnswer={recordAnswer}/>}
     </main>}
     {phase === 'finished' && <Finished title={story.title} onReturn={returnToCatalog}/>}
-    {summaryOpen && <SessionSummary stats={stats} onClose={() => setSummaryOpen(false)}/>}
+    {summaryOpen && <SessionSummary stats={stats} history={history} stories={stories} persistenceAvailable={persistenceAvailable} onClose={() => setSummaryOpen(false)}/>}
     <footer className="site-footer page-width"><span>Una oración a la vez, una aventura completa.</span><span>Actividad educativa no oficial · Personajes de Bluey</span></footer>
   </>;
 }
