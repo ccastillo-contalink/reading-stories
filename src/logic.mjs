@@ -12,3 +12,8 @@ export function reorderAfterMistake(choices, random=Math.random) {
   return [...choices.slice(offset),...choices.slice(0,offset)];
 }
 
+
+export function readingReward({ activeMs, correct, incorrect }) {
+  const readingMinutes = Math.floor(Math.max(0, activeMs) / 60000);
+  return { readingMinutes, televisionMinutes: Math.max(0, readingMinutes + correct - incorrect) };
+}

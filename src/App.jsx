@@ -1,5 +1,6 @@
 import React, { useEffect, useId, useRef, useState } from 'react';
-import { choicesForStep, reorderAfterMistake } from './logic.mjs';
+import { choicesForStep, reorderAfterMistake, readingReward } from './logic.mjs';
+import { useReadingSession } from './useReadingSession.js';
 
 const base = import.meta.env.BASE_URL;
 const letters = ['A', 'B', 'C'];
@@ -53,7 +54,7 @@ function Catalog({ stories, completed, lastFinished, onSelect }) {
   </main>;
 }
 
-function ReadingStep({ story, stepIndex, onNext }) {
+function ReadingStep({ story, stepIndex, onNext, onAnswer }) {
   const [choices, setChoices] = useState(() => choicesForStep(stepIndex, story.steps.length));
   const [status, setStatus] = useState('ready');
   const [attempts, setAttempts] = useState(0);
@@ -61,7 +62,8 @@ function ReadingStep({ story, stepIndex, onNext }) {
   useEffect(() => { heading.current?.focus({ preventScroll: true }); }, []);
   function choose(scene) {
     if (status === 'correct') return;
-    if (scene === stepIndex) { setStatus('correct'); return; }
+    if (scene === stepIndex) { onAnswer(true); setStatus('correct'); return; }
+    onAnswer(false);
     setChoices(old => reorderAfterMistake(old));
     setAttempts(old => old + 1);
     setStatus('retry');
@@ -85,7 +87,7 @@ function ReadingStep({ story, stepIndex, onNext }) {
   </section>;
 }
 
-function QuestionStep({ story, questionIndex, onNext }) {
+function QuestionStep({ story, questionIndex, onNext, onAnswer }) {
   const item = story.questions[questionIndex];
   const [selected, setSelected] = useState(null);
   const correct = selected === item.correct;
@@ -96,7 +98,7 @@ function QuestionStep({ story, questionIndex, onNext }) {
     <h2 ref={heading} tabIndex="-1">{item.question}</h2>
     <p className="quiz-instruction">Elige una respuesta.</p>
     <div className="answer-options">
-      {item.options.map((option, index) => <button key={index} data-answer={index} disabled={correct} className={`answer-option ${selected === index ? correct ? 'selected-correct' : 'selected-wrong' : ''}`} onClick={() => setSelected(index)}>
+      {item.options.map((option, index) => <button key={index} data-answer={index} disabled={correct} className={`answer-option ${selected === index ? correct ? 'selected-correct' : 'selected-wrong' : ''}`} onClick={() => { if (correct) return; onAnswer(index === item.correct); setSelected(index); }}>
         <span className="answer-letter">{letters[index]}</span><span>{option}</span>{selected === index && <span className="answer-mark" aria-hidden="true">{correct ? '✓' : '↻'}</span>}
       </button>)}
     </div>
@@ -112,6 +114,32 @@ function Finished({ title, onReturn }) {
   return <main className="finished page-width" id="main"><div className="finished-check" aria-hidden="true">✓</div><p className="eyebrow">¡CUENTO COMPLETADO!</p><h1>¡Lo hiciste muy bien!</h1><p>Terminaste «{title}» y sus tres preguntas.</p><button className="primary-button" onClick={onReturn}>Elegir otro cuento <Arrow/></button><small>Volvemos a los cuentos en un momento…</small></main>;
 }
 
+function SessionSummary({ stats, onClose }) {
+  const dialog = useRef(null);
+  const { readingMinutes, televisionMinutes } = readingReward(stats);
+  const totalSeconds = Math.floor(stats.activeMs / 1000);
+  const seconds = String(totalSeconds % 60).padStart(2, '0');
+  useEffect(() => {
+    const element = dialog.current;
+    element.showModal();
+    return () => element.close();
+  }, []);
+  return <dialog className="summary-dialog" ref={dialog} aria-labelledby="summary-title" onCancel={event => { event.preventDefault(); onClose(); }}>
+    <div className="summary-top"><p className="eyebrow">TU SESIÓN DE LECTURA</p><button className="summary-close" onClick={onClose} aria-label="Cerrar resumen">×</button></div>
+    <h2 id="summary-title">Tu resumen</h2>
+    <p className="summary-intro">Cada minuto de lectura y cada acierto suman.</p>
+    <dl className="summary-stats">
+      <div><dt>Puntos ganados por leer<small>Tiempo de lectura: {readingMinutes} min {seconds} s</small></dt><dd data-stat="time">+{readingMinutes}</dd></div>
+      <div><dt>Respuestas correctas<small>Dibujos y preguntas</small></dt><dd className="positive" data-stat="correct">+{stats.correct}</dd></div>
+      <div><dt>Respuestas incorrectas<small>Un punto menos por cada error</small></dt><dd className="negative" data-stat="incorrect">−{stats.incorrect}</dd></div>
+    </dl>
+    <div className="television-reward"><p>TU PREMIO</p><strong data-stat="reward">{televisionMinutes} <span>minutos</span></strong><p>de pantalla en la televisión</p></div>
+    <p className="summary-formula">{readingMinutes} + {stats.correct} − {stats.incorrect} = {readingMinutes + stats.correct - stats.incorrect < 0 ? `${readingMinutes + stats.correct - stats.incorrect} → 0` : televisionMinutes}</p>
+    <p className="summary-note">Se cuentan minutos completos. El tiempo se pausa aquí, en el catálogo y al ocultar la página. El premio mínimo es cero.</p>
+    <button className="primary-button summary-return" onClick={onClose}>Seguir leyendo <Arrow/></button>
+  </dialog>;
+}
+
 export default function App() {
   const [stories, setStories] = useState(null);
   const [error, setError] = useState(false);
@@ -120,6 +148,8 @@ export default function App() {
   const [phase, setPhase] = useState('catalog');
   const [completed, setCompleted] = useState(new Set());
   const [lastFinished, setLastFinished] = useState('');
+  const [summaryOpen, setSummaryOpen] = useState(false);
+  const { stats, recordAnswer } = useReadingSession((phase === 'reading' || phase === 'quiz') && !summaryOpen);
   useEffect(() => {
     const controller = new AbortController();
     fetch(`${base}data/stories.json`, { signal: controller.signal }).then(response => {
@@ -150,7 +180,8 @@ export default function App() {
     <a className="skip-link" href="#main">Saltar al contenido</a>
     <header className="site-header"><div className="header-inner page-width">
       <button className="brand" onClick={returnToCatalog} aria-label="Cuentos con Bluey, volver al inicio"><span className="brand-icon"><BookIcon/></span><span>Cuentos con <strong>Bluey</strong></span></button>
-      <a className="pdf-link" href={`${base}documents/40-cuentos-recortables.pdf`} download="Bluey_40_cuentos_recortables.pdf"><span aria-hidden="true">↓</span> <span>Cuaderno PDF</span></a>
+      <div className="header-actions"><button className="summary-button" onClick={() => setSummaryOpen(true)}><span aria-hidden="true">☆</span> Resumen</button>
+      <a className="pdf-link" href={`${base}documents/40-cuentos-recortables.pdf`} download="Bluey_40_cuentos_recortables.pdf"><span aria-hidden="true">↓</span> <span>Cuaderno PDF</span></a></div>
     </div></header>
     {!stories && <main className="loading page-width" id="main" role="status"><h1>{error ? 'No pudimos abrir los cuentos.' : 'Preparando tus cuentos…'}</h1>{error && <button className="primary-button" onClick={() => window.location.reload()}>Volver a intentar</button>}</main>}
     {stories && phase === 'catalog' && <Catalog stories={stories} completed={completed} lastFinished={lastFinished} onSelect={openStory}/>}
@@ -160,9 +191,10 @@ export default function App() {
       <div className="progress-track" role="progressbar" aria-label={phase === 'reading' ? 'Avance de lectura' : 'Avance de preguntas'} aria-valuemin={0} aria-valuemax={phase === 'reading' ? 7 : 3} aria-valuenow={step + 1}>
         {Array.from({ length: phase === 'reading' ? 7 : 3 }, (_, i) => <span key={i} className={i <= step ? 'filled' : ''}/>)}
       </div>
-      {phase === 'reading' ? <ReadingStep key={`reading-${story.id}-${step}`} story={story} stepIndex={step} onNext={next}/> : <QuestionStep key={`quiz-${story.id}-${step}`} story={story} questionIndex={step} onNext={next}/>}
+      {phase === 'reading' ? <ReadingStep key={`reading-${story.id}-${step}`} story={story} stepIndex={step} onNext={next} onAnswer={recordAnswer}/> : <QuestionStep key={`quiz-${story.id}-${step}`} story={story} questionIndex={step} onNext={next} onAnswer={recordAnswer}/>}
     </main>}
     {phase === 'finished' && <Finished title={story.title} onReturn={returnToCatalog}/>}
+    {summaryOpen && <SessionSummary stats={stats} onClose={() => setSummaryOpen(false)}/>}
     <footer className="site-footer page-width"><span>Una oración a la vez, una aventura completa.</span><span>Actividad educativa no oficial · Personajes de Bluey</span></footer>
   </>;
 }

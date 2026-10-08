@@ -31,6 +31,16 @@ npm run dev
 - Los cuentos completados se marcan durante la sesión abierta. No se envían datos del niño a ningún servidor.
 - El cuaderno PDF de 40 páginas se descarga únicamente al pulsar el enlace correspondiente.
 
+## Resumen y premio de televisión
+
+El botón **Resumen** muestra los puntos ganados por tiempo de lectura, respuestas correctas, errores y minutos de televisión.
+
+**Premio = minutos completos de lectura + respuestas correctas − respuestas incorrectas**, con un mínimo de cero. Ejemplo: 20 minutos + 21 aciertos − 1 error = **40 minutos de televisión**.
+
+El reloj cuenta mientras hay una oración o pregunta abierta y la página está visible. Se pausa en el catálogo, al abrir el resumen y al cambiar de pestaña u ocultar la página. Los aciertos y errores incluyen tanto la elección de dibujos como las preguntas finales. Un acierto se cuenta una vez antes de avanzar; cada intento incorrecto resta un punto.
+
+El resumen se guarda en `sessionStorage`: se conserva al recargar la misma pestaña y normalmente se elimina al cerrarla. Los datos permanecen en el navegador y no se envían a un servidor.
+
 ## Contenido e imágenes
 
 `public/data/stories.json` contiene los títulos, oraciones, recortes de cada escena y preguntas. En cada pregunta, `correct` es la posición correcta: 0 para A, 1 para B y 2 para C. El orden de `options` permanece fijo.
@@ -46,7 +56,19 @@ npm test
 npm run build
 ```
 
-La compilación queda en `docs/`. GitHub Pages publica la rama `main`, carpeta `/docs`, del repositorio personal **ccastillo-contalink/reading-stories**. Después de editar, vuelve a compilar, guarda los cambios de fuente y de `docs/` en Git y envíalos al repositorio.
+La compilación queda en `docs/`, una carpeta generada que no se guarda en Git. El workflow `.github/workflows/deploy-pages.yml` publica automáticamente desde el repositorio personal **ccastillo-contalink/reading-stories** cada vez que se envían cambios a `main`.
+
+El GitHub Action instala las dependencias con `npm ci`, ejecuta las pruebas, compila la página y publica el resultado en GitHub Pages. Si falla una prueba o la compilación, conserva la versión publicada. También se puede iniciar manualmente desde la pestaña Actions.
+
+Después de editar:
+
+```sh
+git add .
+git commit -m "Actualizar cuentos"
+git push origin main
+```
+
+No es necesario subir la compilación ni publicar manualmente.
 
 Sitio: https://ccastillo-contalink.github.io/reading-stories/
 

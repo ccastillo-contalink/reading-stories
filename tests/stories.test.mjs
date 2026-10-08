@@ -60,3 +60,12 @@ test('every reading step always has three distinct images including its correct 
     }
   }
 });
+
+test('television reward equals whole reading minutes plus correct answers minus mistakes', async () => {
+  const { readingReward } = await import('../src/logic.mjs');
+  assert.deepEqual(readingReward({ activeMs: 20 * 60000, correct: 21, incorrect: 1 }), { readingMinutes: 20, televisionMinutes: 40 });
+  assert.deepEqual(readingReward({ activeMs: 59999, correct: 0, incorrect: 0 }), { readingMinutes: 0, televisionMinutes: 0 });
+  assert.deepEqual(readingReward({ activeMs: 60000, correct: 0, incorrect: 0 }), { readingMinutes: 1, televisionMinutes: 1 });
+  assert.deepEqual(readingReward({ activeMs: 125999, correct: 3, incorrect: 1 }), { readingMinutes: 2, televisionMinutes: 4 });
+  assert.deepEqual(readingReward({ activeMs: 60000, correct: 1, incorrect: 8 }), { readingMinutes: 1, televisionMinutes: 0 });
+});
